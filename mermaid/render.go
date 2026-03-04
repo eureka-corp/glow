@@ -41,7 +41,9 @@ func RenderToPNG(block Block, widthPixels int) (string, error) {
 	}
 	defer os.Remove(inPath)
 
-	// Run mmdc with a timeout to avoid hanging on puppeteer/chromium issues
+	// Run mmdc with a timeout to avoid hanging on puppeteer/chromium issues.
+	// Detach stdin so puppeteer/chromium doesn't inherit the terminal's stdin
+	// which can cause hangs.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "mmdc",
@@ -51,6 +53,7 @@ func RenderToPNG(block Block, widthPixels int) (string, error) {
 		"--backgroundColor", "transparent",
 		"--quiet",
 	)
+	cmd.Stdin = nil
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("mmdc: %w: %s", err, string(out))
 	}

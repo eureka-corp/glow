@@ -334,13 +334,13 @@ func executeCLI(cmd *cobra.Command, src *source, w io.Writer) error {
 		replacements := make(map[int]string)
 		allSucceeded := true
 		for _, block := range blocks {
-			pngPath, err := mermaid.RenderToPNG(block, widthPixels)
-			if err != nil {
+			pngPath, renderErr := mermaid.RenderToPNG(block, widthPixels)
+			if renderErr != nil {
 				allSucceeded = false
 				break
 			}
-			imgSeq, err := mermaid.ImageEscapeSequence(pngPath, int(width), protocol)
-			if err != nil {
+			imgSeq, imgErr := mermaid.ImageEscapeSequence(pngPath, int(width), protocol)
+			if imgErr != nil {
 				allSucceeded = false
 				break
 			}
