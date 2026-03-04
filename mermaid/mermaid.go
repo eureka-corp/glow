@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// ansiRe matches ANSI escape sequences that glamour may insert within text.
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
 // Block represents a single mermaid code block extracted from markdown.
 type Block struct {
 	Index      int
@@ -36,7 +39,9 @@ func ExtractBlocks(markdown string) []Block {
 }
 
 func placeholderFor(index int) string {
-	return fmt.Sprintf("GLOW_MERMAID_PLACEHOLDER_%d", index)
+	// No underscores — glamour inserts ANSI reset/color sequences at underscore
+	// boundaries which breaks literal string matching in ReplacePlaceholders.
+	return fmt.Sprintf("GLOWMERMAIDPH%d", index)
 }
 
 // PreparePlaceholders replaces mermaid fenced blocks in the markdown with
@@ -56,10 +61,28 @@ func PreparePlaceholders(markdown string, blocks []Block) string {
 
 // ReplacePlaceholders swaps placeholder strings in glamour's rendered output
 // with the provided replacement strings (e.g. terminal image escape sequences).
+// It handles the case where glamour may have inserted ANSI escape sequences
+// within the placeholder text.
 func ReplacePlaceholders(glamourOutput string, replacements map[int]string) string {
 	result := glamourOutput
 	for idx, replacement := range replacements {
-		result = strings.ReplaceAll(result, placeholderFor(idx), replacement)
+		ph := placeholderFor(idx)
+		// First try exact match (fast path)
+		if strings.Contains(result, ph) {
+			result = strings.ReplaceAll(result, ph, replacement)
+			continue
+		}
+		// Fallback: glamour may have inserted ANSI codes within the placeholder.
+		// Build a regex that allows ANSI sequences between each character.
+		var pattern strings.Builder
+		for i, ch := range ph {
+			if i > 0 {
+				pattern.WriteString(`(?:\x1b\[[0-9;]*m)*`)
+			}
+			pattern.WriteString(regexp.QuoteMeta(string(ch)))
+		}
+		re := regexp.MustCompile(pattern.String())
+		result = re.ReplaceAllString(result, replacement)
 	}
 	return result
 }

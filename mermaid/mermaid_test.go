@@ -59,7 +59,7 @@ func TestPlaceholderRoundtrip(t *testing.T) {
 	if strings.Contains(withPlaceholders, "```mermaid") {
 		t.Error("placeholders should have replaced mermaid fence")
 	}
-	if !strings.Contains(withPlaceholders, "GLOW_MERMAID_PLACEHOLDER_0") {
+	if !strings.Contains(withPlaceholders, "GLOWMERMAIDPH0") {
 		t.Error("expected placeholder in output")
 	}
 
@@ -69,7 +69,7 @@ func TestPlaceholderRoundtrip(t *testing.T) {
 	if !strings.Contains(result, replacement) {
 		t.Error("expected replacement in final output")
 	}
-	if strings.Contains(result, "GLOW_MERMAID_PLACEHOLDER") {
+	if strings.Contains(result, "GLOWMERMAIDPH") {
 		t.Error("placeholder should have been replaced")
 	}
 }
@@ -118,7 +118,7 @@ func TestPlaceholderMultiple(t *testing.T) {
 	withPlaceholders := PreparePlaceholders(md, blocks)
 
 	for i := range blocks {
-		ph := fmt.Sprintf("GLOW_MERMAID_PLACEHOLDER_%d", i)
+		ph := fmt.Sprintf("GLOWMERMAIDPH%d", i)
 		if !strings.Contains(withPlaceholders, ph) {
 			t.Errorf("expected %s in output", ph)
 		}
@@ -131,6 +131,19 @@ func TestPlaceholderMultiple(t *testing.T) {
 	result := ReplacePlaceholders(withPlaceholders, replacements)
 	if !strings.Contains(result, "[IMG_0]") || !strings.Contains(result, "[IMG_1]") {
 		t.Error("expected both replacements in output")
+	}
+}
+
+func TestReplacePlaceholders_WithANSI(t *testing.T) {
+	// Simulate glamour inserting ANSI codes within the placeholder at char boundaries
+	ansiMangled := "GLOWMERMAIDPH\x1b[0m\x1b[38;5;252m0"
+	replacements := map[int]string{0: "[IMAGE]"}
+	result := ReplacePlaceholders(ansiMangled, replacements)
+	if !strings.Contains(result, "[IMAGE]") {
+		t.Errorf("expected ANSI-aware replacement to work, got %q", result)
+	}
+	if strings.Contains(result, "GLOWMERMAIDPH") {
+		t.Errorf("placeholder should have been replaced, got %q", result)
 	}
 }
 
