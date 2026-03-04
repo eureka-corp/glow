@@ -100,6 +100,8 @@ func TestDetectProtocol(t *testing.T) {
 
 			t.Setenv("TERM_PROGRAM", "")
 			t.Setenv("KITTY_PID", "")
+			t.Setenv("LC_TERMINAL", "")
+			t.Setenv("ITERM_SESSION_ID", "")
 			t.Setenv(tt.envKey, tt.envValue)
 
 			got := DetectProtocol()

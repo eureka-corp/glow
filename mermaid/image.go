@@ -32,6 +32,11 @@ func DetectProtocol() Protocol {
 	if os.Getenv("KITTY_PID") != "" {
 		return ProtocolKitty
 	}
+	// When running inside tmux, TERM_PROGRAM is "tmux" but the actual
+	// terminal can be detected via LC_TERMINAL or ITERM_SESSION_ID.
+	if strings.ToLower(os.Getenv("LC_TERMINAL")) == "iterm2" || os.Getenv("ITERM_SESSION_ID") != "" {
+		return ProtocolITerm2
+	}
 	return ProtocolNone
 }
 
