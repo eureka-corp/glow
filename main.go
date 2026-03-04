@@ -313,6 +313,7 @@ func executeCLI(cmd *cobra.Command, src *source, w io.Writer) error {
 	var blocks []mermaid.Block
 	protocol := mermaid.DetectProtocol()
 	renderMermaid := mermaidEnabled && mermaid.Available() && protocol != mermaid.ProtocolNone
+	originalContent := content
 	if renderMermaid {
 		blocks = mermaid.ExtractBlocks(content)
 		if len(blocks) > 0 {
@@ -331,19 +332,28 @@ func executeCLI(cmd *cobra.Command, src *source, w io.Writer) error {
 	if renderMermaid {
 		widthPixels := int(width) * 8
 		replacements := make(map[int]string)
+		allSucceeded := true
 		for _, block := range blocks {
 			pngPath, err := mermaid.RenderToPNG(block, widthPixels)
 			if err != nil {
-				continue
+				allSucceeded = false
+				break
 			}
 			imgSeq, err := mermaid.ImageEscapeSequence(pngPath, int(width), protocol)
 			if err != nil {
-				continue
+				allSucceeded = false
+				break
 			}
 			replacements[block.Index] = mermaid.FormatForViewport(imgSeq, 1)
 		}
-		if len(replacements) > 0 {
+		if allSucceeded && len(replacements) > 0 {
 			out = mermaid.ReplacePlaceholders(out, replacements)
+		} else {
+			// Rendering failed — fall back to original content without placeholders
+			out, err = r.Render(originalContent)
+			if err != nil {
+				return fmt.Errorf("unable to render markdown: %w", err)
+			}
 		}
 	}
 

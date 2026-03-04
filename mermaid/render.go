@@ -1,10 +1,12 @@
 package mermaid
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 // Available reports whether the mmdc (Mermaid CLI) binary is on the PATH.
@@ -39,8 +41,10 @@ func RenderToPNG(block Block, widthPixels int) (string, error) {
 	}
 	defer os.Remove(inPath)
 
-	// Run mmdc
-	cmd := exec.Command("mmdc",
+	// Run mmdc with a timeout to avoid hanging on puppeteer/chromium issues
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "mmdc",
 		"-i", inPath,
 		"-o", outPath,
 		"-w", fmt.Sprintf("%d", widthPixels),

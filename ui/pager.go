@@ -452,21 +452,31 @@ func renderWithGlamour(m pagerModel, md string) tea.Cmd {
 		if renderMermaid {
 			widthPixels := m.viewport.Width * 8 // approximate pixels per column
 			replacements := make(map[int]string)
+			allSucceeded := true
 			for _, block := range m.mermaidBlocks {
 				pngPath, err := mermaid.RenderToPNG(block, widthPixels)
 				if err != nil {
 					log.Error("error rendering mermaid block", "error", err)
-					continue
+					allSucceeded = false
+					break
 				}
 				imgSeq, err := mermaid.ImageEscapeSequence(pngPath, m.viewport.Width, m.mermaidProtocol)
 				if err != nil {
 					log.Error("error creating image sequence", "error", err)
-					continue
+					allSucceeded = false
+					break
 				}
 				replacements[block.Index] = mermaid.FormatForViewport(imgSeq, 1)
 			}
-			if len(replacements) > 0 {
+			if allSucceeded && len(replacements) > 0 {
 				s = mermaid.ReplacePlaceholders(s, replacements)
+			} else {
+				// Rendering failed — fall back to original markdown without placeholders
+				s, err = glamourRender(m, md)
+				if err != nil {
+					log.Error("error rendering with Glamour", "error", err)
+					return errMsg{err}
+				}
 			}
 		}
 
