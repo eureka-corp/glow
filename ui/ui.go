@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour/styles"
+	"github.com/charmbracelet/glow/v2/mermaid"
 	"github.com/charmbracelet/glow/v2/utils"
 	"github.com/charmbracelet/log"
 	"github.com/muesli/gitcha"
@@ -156,6 +157,7 @@ func newModel(cfg Config, content string) tea.Model {
 	if path == "" && content != "" {
 		m.state = stateShowDocument
 		m.pager.currentDocument = markdown{Body: content}
+		m.pager.mermaidBlocks = mermaid.ExtractBlocks(content)
 		return m
 	}
 
@@ -196,6 +198,7 @@ func (m model) Init() tea.Cmd {
 			return func() tea.Msg { return errMsg{err} }
 		}
 		body := string(utils.RemoveFrontmatter(content))
+		m.pager.mermaidBlocks = mermaid.ExtractBlocks(body)
 		cmds = append(cmds, renderWithGlamour(m.pager, body))
 	}
 
@@ -276,6 +279,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// We've loaded a markdown file's contents for rendering
 		m.pager.currentDocument = *msg
 		body := string(utils.RemoveFrontmatter([]byte(msg.Body)))
+		m.pager.mermaidBlocks = mermaid.ExtractBlocks(body)
 		cmds = append(cmds, renderWithGlamour(m.pager, body))
 
 	case contentRenderedMsg:

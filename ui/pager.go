@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glow/v2/mermaid"
 	"github.com/charmbracelet/glow/v2/utils"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
@@ -102,6 +103,11 @@ type pagerModel struct {
 	// it here so we can re-render it on resize.
 	currentDocument markdown
 
+	showMermaidRendered bool
+	mermaidBlocks       []mermaid.Block
+	mermaidAvailable    bool
+	mermaidProtocol     mermaid.Protocol
+
 	watcher *fsnotify.Watcher
 }
 
@@ -112,9 +118,12 @@ func newPagerModel(common *commonModel) pagerModel {
 	vp.HighPerformanceRendering = config.HighPerformancePager
 
 	m := pagerModel{
-		common:   common,
-		state:    pagerStateBrowse,
-		viewport: vp,
+		common:              common,
+		state:               pagerStateBrowse,
+		viewport:            vp,
+		showMermaidRendered: true,
+		mermaidAvailable:    mermaid.Available(),
+		mermaidProtocol:     mermaid.DetectProtocol(),
 	}
 	m.initWatcher()
 	return m
@@ -241,6 +250,21 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 			m.toggleHelp()
 			if m.viewport.HighPerformanceRendering {
 				cmds = append(cmds, viewport.Sync(m.viewport))
+			}
+
+		case "m":
+			if len(m.mermaidBlocks) > 0 {
+				m.showMermaidRendered = !m.showMermaidRendered
+				label := "source"
+				if m.showMermaidRendered {
+					label = "rendered"
+				}
+				cmds = append(cmds,
+					renderWithGlamour(m, m.currentDocument.Body),
+					m.showStatusMessage(pagerStatusMessage{
+						fmt.Sprintf("Mermaid diagrams: %s", label), false,
+					}),
+				)
 			}
 		}
 
@@ -372,6 +396,7 @@ func (m pagerModel) helpView() (s string) {
 		"c       copy contents",
 		"e       edit this document",
 		"r       reload this document",
+		"m       toggle mermaid diagrams",
 		"esc     back to files",
 		"q       quit",
 	}
@@ -382,11 +407,9 @@ func (m pagerModel) helpView() (s string) {
 	s += "b/pgup   page up             " + col1[2] + "\n"
 	s += "f/pgdn   page down           " + col1[3] + "\n"
 	s += "u        ½ page up           " + col1[4] + "\n"
-	s += "d        ½ page down         "
-
-	if len(col1) > 5 {
-		s += col1[5]
-	}
+	s += "d        ½ page down         " + col1[5] + "\n"
+	s += "                             " + col1[6] + "\n"
+	s += "                             " + col1[7]
 
 	s = indent(s, 2)
 
@@ -409,11 +432,44 @@ func (m pagerModel) helpView() (s string) {
 
 func renderWithGlamour(m pagerModel, md string) tea.Cmd {
 	return func() tea.Msg {
-		s, err := glamourRender(m, md)
+		renderMermaid := len(m.mermaidBlocks) > 0 &&
+			m.showMermaidRendered &&
+			m.mermaidAvailable &&
+			m.mermaidProtocol != mermaid.ProtocolNone &&
+			config.MermaidEnabled
+
+		input := md
+		if renderMermaid {
+			input = mermaid.PreparePlaceholders(md, m.mermaidBlocks)
+		}
+
+		s, err := glamourRender(m, input)
 		if err != nil {
 			log.Error("error rendering with Glamour", "error", err)
 			return errMsg{err}
 		}
+
+		if renderMermaid {
+			widthPixels := m.viewport.Width * 8 // approximate pixels per column
+			replacements := make(map[int]string)
+			for _, block := range m.mermaidBlocks {
+				pngPath, err := mermaid.RenderToPNG(block, widthPixels)
+				if err != nil {
+					log.Error("error rendering mermaid block", "error", err)
+					continue
+				}
+				imgSeq, err := mermaid.ImageEscapeSequence(pngPath, m.viewport.Width, m.mermaidProtocol)
+				if err != nil {
+					log.Error("error creating image sequence", "error", err)
+					continue
+				}
+				replacements[block.Index] = mermaid.FormatForViewport(imgSeq, 1)
+			}
+			if len(replacements) > 0 {
+				s = mermaid.ReplacePlaceholders(s, replacements)
+			}
+		}
+
 		return contentRenderedMsg(s)
 	}
 }
