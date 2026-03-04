@@ -16,6 +16,7 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
+	"github.com/charmbracelet/glow/v2/mermaid"
 	"github.com/charmbracelet/glow/v2/ui"
 	"github.com/charmbracelet/glow/v2/utils"
 	"github.com/charmbracelet/lipgloss"
@@ -42,6 +43,7 @@ var (
 	showLineNumbers  bool
 	preserveNewLines bool
 	mouse            bool
+	mermaidEnabled   bool
 
 	rootCmd = &cobra.Command{
 		Use:   "glow [SOURCE|DIR]",
@@ -171,6 +173,7 @@ func validateOptions(cmd *cobra.Command) error {
 	showAllFiles = viper.GetBool("all")
 	preserveNewLines = viper.GetBool("preserveNewLines")
 	showLineNumbers = viper.GetBool("showLineNumbers")
+	mermaidEnabled = viper.GetBool("mermaid")
 
 	if pager && tui {
 		return errors.New("cannot use both pager and tui")
@@ -306,9 +309,42 @@ func executeCLI(cmd *cobra.Command, src *source, w io.Writer) error {
 		content = utils.WrapCodeBlock(string(b), ext)
 	}
 
+	// Mermaid pipeline: extract blocks and replace with placeholders before rendering
+	var blocks []mermaid.Block
+	protocol := mermaid.DetectProtocol()
+	renderMermaid := mermaidEnabled && mermaid.Available() && protocol != mermaid.ProtocolNone
+	if renderMermaid {
+		blocks = mermaid.ExtractBlocks(content)
+		if len(blocks) > 0 {
+			content = mermaid.PreparePlaceholders(content, blocks)
+		} else {
+			renderMermaid = false
+		}
+	}
+
 	out, err := r.Render(content)
 	if err != nil {
 		return fmt.Errorf("unable to render markdown: %w", err)
+	}
+
+	// Replace placeholders with rendered mermaid images
+	if renderMermaid {
+		widthPixels := int(width) * 8
+		replacements := make(map[int]string)
+		for _, block := range blocks {
+			pngPath, err := mermaid.RenderToPNG(block, widthPixels)
+			if err != nil {
+				continue
+			}
+			imgSeq, err := mermaid.ImageEscapeSequence(pngPath, int(width), protocol)
+			if err != nil {
+				continue
+			}
+			replacements[block.Index] = mermaid.FormatForViewport(imgSeq, 1)
+		}
+		if len(replacements) > 0 {
+			out = mermaid.ReplacePlaceholders(out, replacements)
+		}
 	}
 
 	// display
@@ -359,6 +395,7 @@ func runTUI(path string, content string) error {
 	cfg.GlamourMaxWidth = width
 	cfg.EnableMouse = mouse
 	cfg.PreserveNewLines = preserveNewLines
+	cfg.MermaidEnabled = mermaidEnabled
 
 	// Run Bubble Tea program
 	if _, err := ui.NewProgram(cfg, content).Run(); err != nil {
@@ -404,6 +441,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&preserveNewLines, "preserve-new-lines", "n", false, "preserve newlines in the output")
 	rootCmd.Flags().BoolVarP(&mouse, "mouse", "m", false, "enable mouse wheel (TUI-mode only)")
 	_ = rootCmd.Flags().MarkHidden("mouse")
+	rootCmd.Flags().BoolVar(&mermaidEnabled, "mermaid", true, "render mermaid diagrams as images")
 
 	// Config bindings
 	_ = viper.BindPFlag("pager", rootCmd.Flags().Lookup("pager"))
@@ -415,10 +453,12 @@ func init() {
 	_ = viper.BindPFlag("preserveNewLines", rootCmd.Flags().Lookup("preserve-new-lines"))
 	_ = viper.BindPFlag("showLineNumbers", rootCmd.Flags().Lookup("line-numbers"))
 	_ = viper.BindPFlag("all", rootCmd.Flags().Lookup("all"))
+	_ = viper.BindPFlag("mermaid", rootCmd.Flags().Lookup("mermaid"))
 
 	viper.SetDefault("style", styles.AutoStyle)
 	viper.SetDefault("width", 0)
 	viper.SetDefault("all", true)
+	viper.SetDefault("mermaid", true)
 
 	rootCmd.AddCommand(configCmd, manCmd)
 }
