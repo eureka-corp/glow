@@ -1,8 +1,11 @@
 package mermaid
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 )
@@ -87,6 +90,50 @@ func kittySequence(data []byte, widthCols int) string {
 		}
 	}
 	return sb.String()
+}
+
+// ImageRows calculates how many terminal rows a PNG image will occupy when
+// displayed at the given column width. It reads the PNG header to get
+// pixel dimensions and assumes typical cell dimensions (8px wide, 16px tall).
+func ImageRows(pngPath string, widthCols int) int {
+	w, h := pngDimensions(pngPath)
+	if w == 0 || h == 0 || widthCols <= 0 {
+		return 1
+	}
+	// The image is scaled to fit widthCols columns.
+	// Each column is ~8px wide, each row is ~16px tall.
+	const cellW, cellH = 8, 16
+	displayWidthPx := float64(widthCols) * cellW
+	scale := displayWidthPx / float64(w)
+	displayHeightPx := float64(h) * scale
+	rows := int(math.Ceil(displayHeightPx / cellH))
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
+}
+
+// pngDimensions reads the width and height from a PNG file's IHDR chunk.
+func pngDimensions(path string) (width, height int) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+
+	// PNG header (8 bytes) + IHDR length (4 bytes) + "IHDR" (4 bytes) + width (4 bytes) + height (4 bytes) = 24 bytes
+	buf := make([]byte, 24)
+	if _, err := f.Read(buf); err != nil {
+		return 0, 0
+	}
+	// Verify PNG signature
+	pngSig := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	if !bytes.Equal(buf[:8], pngSig) {
+		return 0, 0
+	}
+	w := binary.BigEndian.Uint32(buf[16:20])
+	h := binary.BigEndian.Uint32(buf[20:24])
+	return int(w), int(h)
 }
 
 // FormatForViewport pads the image sequence with newlines for viewport spacing.

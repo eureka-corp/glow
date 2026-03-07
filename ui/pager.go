@@ -466,7 +466,8 @@ func renderWithGlamour(m pagerModel, md string) tea.Cmd {
 					allSucceeded = false
 					break
 				}
-				replacements[block.Index] = mermaid.FormatForViewport(imgSeq, 1)
+				rows := mermaid.ImageRows(pngPath, m.viewport.Width)
+				replacements[block.Index] = mermaid.FormatForViewport(imgSeq, rows)
 			}
 			if allSucceeded && len(replacements) > 0 {
 				s = mermaid.ReplacePlaceholders(s, replacements)

@@ -344,7 +344,8 @@ func executeCLI(cmd *cobra.Command, src *source, w io.Writer) error {
 				allSucceeded = false
 				break
 			}
-			replacements[block.Index] = mermaid.FormatForViewport(imgSeq, 1)
+			rows := mermaid.ImageRows(pngPath, int(width))
+			replacements[block.Index] = mermaid.FormatForViewport(imgSeq, rows)
 		}
 		if allSucceeded && len(replacements) > 0 {
 			out = mermaid.ReplacePlaceholders(out, replacements)
